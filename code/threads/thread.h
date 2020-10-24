@@ -59,8 +59,12 @@
 // Thread state
 enum ThreadStatus { JUST_CREATED, RUNNING, READY, BLOCKED };
 
+const char* const ThreadStatus2Str[]={"JUST_CREATED", "RUNNING", "READY", "BLOCKED"};
+
 // external function, dummy routine whose sole job is to call Thread::Print
 extern void ThreadPrint(int arg);	 
+
+extern void TS();
 
 // The following class defines a "thread control block" -- which
 // represents a single thread of execution.
@@ -79,8 +83,11 @@ class Thread {
     // THEY MUST be in this position for SWITCH to work.
     int* stackTop;			 // the current stack pointer
     int machineState[MachineStateSize];  // all registers except for stackTop
+    int uid, tid;       // user id, thread id
 
   public:
+    int getUid() { return uid; }
+    int getTid() { return tid; }
     Thread(char* debugName);		// initialize a Thread 
     ~Thread(); 				// deallocate a Thread
 					// NOTE -- thread being deleted
@@ -99,6 +106,7 @@ class Thread {
     void CheckOverflow();   			// Check if thread has 
 						// overflowed its stack
     void setStatus(ThreadStatus st) { status = st; }
+    ThreadStatus getStatus() { return status; }
     char* getName() { return (name); }
     void Print() { printf("%s, ", name); }
 
@@ -129,6 +137,8 @@ class Thread {
     AddrSpace *space;			// User code this thread is running.
 #endif
 };
+
+extern Thread* newThread(char* threadName);
 
 // Magical machine-dependent routines, defined in switch.s
 

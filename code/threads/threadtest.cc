@@ -12,6 +12,9 @@
 #include "copyright.h"
 #include "system.h"
 
+// testnum is set in main.cc
+int testnum = 1;
+
 //----------------------------------------------------------------------
 // SimpleThread
 // 	Loop 5 times, yielding the CPU to another ready thread 
@@ -33,19 +36,84 @@ SimpleThread(int which)
 }
 
 //----------------------------------------------------------------------
-// ThreadTest
+// ThreadTest1
 // 	Set up a ping-pong between two threads, by forking a thread 
 //	to call SimpleThread, and then calling SimpleThread ourselves.
 //----------------------------------------------------------------------
 
 void
-ThreadTest()
+ThreadTest1()
 {
-    DEBUG('t', "Entering SimpleTest");
+    DEBUG('t', "Entering ThreadTest1");
 
     Thread *t = new Thread("forked thread");
 
     t->Fork(SimpleThread, 1);
     SimpleThread(0);
+}
+
+//----------------------------------------------------------------------
+// OutputTidUid
+// 	output uid & tid
+//----------------------------------------------------------------------
+
+void OutputTidUid(int sleep)
+{
+    printf("uid: %3d, tid: %3d\n", currentThread->getUid(), currentThread->getTid());
+    if (sleep){
+        IntStatus oldLevel = interrupt->SetLevel(IntOff);
+        currentThread->Sleep();
+        (void) interrupt->SetLevel(oldLevel);
+    }
+}
+
+//----------------------------------------------------------------------
+// ThreadTest2
+// 	test uid/tid
+//----------------------------------------------------------------------
+
+void
+ThreadTest2()
+{
+    DEBUG('t', "Entering ThreadTest2");
+    OutputTidUid(0);
+    for (int i=1;i<60;i++){
+        Thread *t = newThread("forked thread");
+        t->Fork(OutputTidUid, 1);
+        currentThread->Yield();
+    }
+    for (int i=60;i<128;i++){
+        Thread *t = newThread("forked thread");
+        t->Fork(OutputTidUid, 0);
+        currentThread->Yield();
+    }
+    for (int i=60;i<128;i++){
+        Thread *t = newThread("forked thread");
+        t->Fork(OutputTidUid, 0);
+        currentThread->Yield();
+    }
+    currentThread->Yield();
+    TS();
+}
+
+//----------------------------------------------------------------------
+// ThreadTest
+// 	Invoke a test routine.
+//----------------------------------------------------------------------
+
+void
+ThreadTest()
+{
+    switch (testnum) {
+    case 1:
+	ThreadTest1();
+	break;
+    case 2:
+    ThreadTest2();
+    break;
+    default:
+	printf("No test specified.\n");
+	break;
+    }
 }
 

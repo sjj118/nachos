@@ -19,6 +19,7 @@
 #include "switch.h"
 #include "synch.h"
 #include "system.h"
+#include "unistd.h"
 
 #define STACK_FENCEPOST 0xdeadbeef	// this is put at the top of the
 					// execution stack, for detecting 
@@ -38,9 +39,17 @@ Thread::Thread(char* threadName)
     stackTop = NULL;
     stack = NULL;
     status = JUST_CREATED;
+    uid = getuid();
+    tid = getNextTid();
+    thread_list[tid] = this;
 #ifdef USER_PROGRAM
     space = NULL;
 #endif
+}
+
+Thread* newThread(char* threadName){
+    if(tid_pool.empty()) return NULL;
+    return new Thread(threadName);
 }
 
 //----------------------------------------------------------------------
@@ -62,6 +71,8 @@ Thread::~Thread()
     ASSERT(this != currentThread);
     if (stack != NULL)
 	DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
+    thread_list[tid] = NULL;
+    tid_pool.push(tid);
 }
 
 //----------------------------------------------------------------------
@@ -120,7 +131,7 @@ Thread::CheckOverflow()
 #ifdef HOST_SNAKE			// Stacks grow upward on the Snakes
 	ASSERT(stack[StackSize - 1] == STACK_FENCEPOST);
 #else
-	ASSERT(*stack == STACK_FENCEPOST);
+	ASSERT((int) *stack == (int) STACK_FENCEPOST);
 #endif
 }
 
@@ -236,6 +247,15 @@ Thread::Sleep ()
 static void ThreadFinish()    { currentThread->Finish(); }
 static void InterruptEnable() { interrupt->Enable(); }
 void ThreadPrint(int arg){ Thread *t = (Thread *)arg; t->Print(); }
+
+void TS(){
+    printf("TID UID %12s NAME\n", "STATUS");
+    for (int i=0;i<MAX_THREAD;i++){
+        Thread *t = thread_list[i];
+        if (!t) continue;
+        printf("%3d %3d %12s \"%s\"\n", t->getTid(), t->getUid(), ThreadStatus2Str[t->getStatus()], t->getName());
+    }
+}
 
 //----------------------------------------------------------------------
 // Thread::StackAllocate

@@ -35,7 +35,7 @@
  All rights reserved.  See copyright.h for copyright notice and limitation 
  of liability and disclaimer of warranty provisions.
  */
-
+	
 #include "copyright.h"
 #include "switch.h"
 
@@ -70,7 +70,7 @@ ThreadRoot:
 	jal	StartupPC	# call startup procedure
 	move	a0, InitialArg
 	jal	InitialPC	# call main procedure
-	jal 	WhenDonePC	# when we're done, call clean up procedure
+	jal 	WhenDonePC	# when were done, call clean up procedure
 
 	# NEVER REACHED
 	.end ThreadRoot
@@ -106,7 +106,7 @@ SWITCH:
 
 	j	ra
 	.end SWITCH
-#endif HOST_MIPS
+#endif // HOST_MIPS
 
 #ifdef HOST_SPARC
 
@@ -114,8 +114,11 @@ SWITCH:
  *  you need to find where (the SPARC-specific) MINFRAME, ST_FLUSH_WINDOWS, ...
  *  are defined.  (I don't have a Solaris machine, so I have no way to tell.)
  */
-#include <sun4/trap.h>
-#include <sun4/asm_linkage.h>
+/* From sys/trap.h and sys/asm_linkage.h */
+#include <sys/trap.h>
+#define _ASM
+#include <sys/stack.h>
+		
 .seg    "text"
 
 /* SPECIAL to the SPARC:
@@ -126,8 +129,8 @@ SWITCH:
  *	two nops at the beginning of the routine.
  */
 
-.globl	_ThreadRoot
-_ThreadRoot:
+.globl	ThreadRoot
+ThreadRoot:
 	nop  ; nop         /* These 2 nops are skipped because we are called
 			    * with a jmp+8 instruction. */
 	clr	%fp        /* Clearing the frame pointer makes gdb backtraces 
@@ -154,8 +157,8 @@ _ThreadRoot:
 	ta	ST_BREAKPOINT
 
 
-.globl	_SWITCH
-_SWITCH:
+.globl	SWITCH
+SWITCH:
 	save	%sp, -SA(MINFRAME), %sp
 	st	%fp, [%i0]
 	st	%i0, [%i0+I0]
@@ -179,7 +182,7 @@ _SWITCH:
 	ret
 	restore
 
-#endif HOST_SPARC
+#endif // HOST_SPARC
 
 #ifdef HOST_SNAKE
 
@@ -267,7 +270,7 @@ SWITCH
         .text
         .align  2
 
-        .globl  _ThreadRoot
+        .globl  ThreadRoot
 
 /* void ThreadRoot( void )
 **
@@ -277,15 +280,15 @@ SWITCH
 **      esi     points to thread function
 **      edi     point to Thread::Finish()
 */
-_ThreadRoot:
+ThreadRoot:
         pushl   %ebp
         movl    %esp,%ebp
         pushl   InitialArg
-        call    StartupPC
-        call    InitialPC
-        call    WhenDonePC
+        call    *StartupPC
+        call    *InitialPC
+        call    *WhenDonePC
 
-        # NOT REACHED
+        // NOT REACHED
         movl    %ebp,%esp
         popl    %ebp
         ret
@@ -305,8 +308,8 @@ _ThreadRoot:
 */
         .comm   _eax_save,4
 
-        .globl  _SWITCH
-_SWITCH:
+        .globl  SWITCH
+SWITCH:
         movl    %eax,_eax_save          # save the value of eax
         movl    4(%esp),%eax            # move pointer to t1 into eax
         movl    %ebx,_EBX(%eax)         # save registers

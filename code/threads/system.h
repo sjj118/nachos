@@ -15,6 +15,7 @@
 #include "interrupt.h"
 #include "stats.h"
 #include "timer.h"
+#include <queue>
 
 // Initialization and cleanup routines
 extern void Initialize(int argc, char **argv); 	// Initialization,
@@ -28,6 +29,13 @@ extern Scheduler *scheduler;			// the ready list
 extern Interrupt *interrupt;			// interrupt status
 extern Statistics *stats;			// performance metrics
 extern Timer *timer;				// the hardware alarm clock
+
+const int MAX_THREAD = 128;
+extern std::queue<int> tid_pool;
+extern int getNextTid();
+
+extern Thread *thread_list[MAX_THREAD];
+
 
 #ifdef USER_PROGRAM
 #include "machine.h"

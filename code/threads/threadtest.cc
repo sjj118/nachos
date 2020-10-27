@@ -89,7 +89,7 @@ ThreadTest2()
     }
     for (int i=60;i<128;i++){
         Thread *t = newThread("forked thread");
-        t->Fork(OutputTidUid, 0);
+        t->Fork(OutputTidUid, 1);
         currentThread->Yield();
     }
     currentThread->Yield();

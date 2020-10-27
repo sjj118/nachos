@@ -15,7 +15,6 @@
 #include "interrupt.h"
 #include "stats.h"
 #include "timer.h"
-#include <queue>
 
 // Initialization and cleanup routines
 extern void Initialize(int argc, char **argv); 	// Initialization,
@@ -31,7 +30,7 @@ extern Statistics *stats;			// performance metrics
 extern Timer *timer;				// the hardware alarm clock
 
 const int MAX_THREAD = 128;
-extern std::queue<int> tid_pool;
+extern int tid_pool[MAX_THREAD], tid_pool_num;
 extern int getNextTid();
 
 extern Thread *thread_list[MAX_THREAD];

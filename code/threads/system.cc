@@ -19,15 +19,13 @@ Statistics *stats;			// performance metrics
 Timer *timer;				// the hardware timer device,
 					// for invoking context switches
 
-std::queue<int> tid_pool;
+int tid_pool[MAX_THREAD], tid_pool_num=0;
 
 Thread *thread_list[MAX_THREAD];
 
 int getNextTid() {
-    ASSERT(!tid_pool.empty());
-    int tid = tid_pool.front();
-    tid_pool.pop();
-    return tid;
+    ASSERT(tid_pool_num>0);
+    return tid_pool[--tid_pool_num];
 }
 
 #ifdef FILESYS_NEEDED
@@ -148,7 +146,7 @@ Initialize(int argc, char **argv)
 	timer = new Timer(TimerInterruptHandler, 0, randomYield);
 
     threadToBeDestroyed = NULL;
-    for (int i=0;i<MAX_THREAD;i++) tid_pool.push(i);
+    for (int i=MAX_THREAD-1;i>=0;i--) tid_pool[tid_pool_num++]=i;
 
     // We didn't explicitly allocate the current thread we are running in.
     // But if it ever tries to give up the CPU, we better have a Thread

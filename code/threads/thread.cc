@@ -48,7 +48,7 @@ Thread::Thread(char* threadName)
 }
 
 Thread* newThread(char* threadName){
-    if(tid_pool.empty()) return NULL;
+    if(tid_pool_num==0) return NULL;
     return new Thread(threadName);
 }
 
@@ -72,7 +72,7 @@ Thread::~Thread()
     if (stack != NULL)
 	DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
     thread_list[tid] = NULL;
-    tid_pool.push(tid);
+    tid_pool[tid_pool_num++]=tid;
 }
 
 //----------------------------------------------------------------------

@@ -84,10 +84,13 @@ class Thread {
     int* stackTop;			 // the current stack pointer
     int machineState[MachineStateSize];  // all registers except for stackTop
     int uid, tid;       // user id, thread id
+    int priority;       // priority
 
   public:
     int getUid() { return uid; }
     int getTid() { return tid; }
+    int getPriority() { return priority; }
+    void setPriority(int prio) { priority = prio; }
     Thread(char* debugName);		// initialize a Thread 
     ~Thread(); 				// deallocate a Thread
 					// NOTE -- thread being deleted

@@ -40,7 +40,9 @@ Thread::Thread(char* threadName)
     stack = NULL;
     status = JUST_CREATED;
     uid = getuid();
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);
     tid = getNextTid();
+    (void) interrupt->SetLevel(oldLevel);
     thread_list[tid] = this;
 #ifdef USER_PROGRAM
     space = NULL;
@@ -72,7 +74,9 @@ Thread::~Thread()
     if (stack != NULL)
 	DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
     thread_list[tid] = NULL;
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);
     tid_pool[tid_pool_num++]=tid;
+    (void) interrupt->SetLevel(oldLevel);
 }
 
 //----------------------------------------------------------------------
@@ -192,11 +196,10 @@ Thread::Yield ()
     
     DEBUG('t', "Yielding thread \"%s\"\n", getName());
     
+    scheduler->ReadyToRun(this);
     nextThread = scheduler->FindNextToRun();
-    if (nextThread != NULL) {
-	scheduler->ReadyToRun(this);
 	scheduler->Run(nextThread);
-    }
+
     (void) interrupt->SetLevel(oldLevel);
 }
 
@@ -245,7 +248,7 @@ Thread::Sleep ()
 //----------------------------------------------------------------------
 
 static void ThreadFinish()    { currentThread->Finish(); }
-static void InterruptEnable() { interrupt->Enable(); }
+static void InterruptEnable() { scheduler->AfterSwitch();interrupt->Enable();}
 void ThreadPrint(int arg){ Thread *t = (Thread *)arg; t->Print(); }
 
 void TS(){

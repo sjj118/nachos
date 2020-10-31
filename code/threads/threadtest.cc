@@ -64,7 +64,7 @@ void OutputTidUid(int sleep)
         IntStatus oldLevel = interrupt->SetLevel(IntOff);
         currentThread->Sleep();
         (void) interrupt->SetLevel(oldLevel);
-    }
+    } else currentThread->Finish();
 }
 
 //----------------------------------------------------------------------
@@ -75,25 +75,43 @@ void OutputTidUid(int sleep)
 void
 ThreadTest2()
 {
-    DEBUG('t', "Entering ThreadTest2");
-    OutputTidUid(0);
+    DEBUG('t', "Entering ThreadTest2\n");
     for (int i=1;i<60;i++){
         Thread *t = newThread("forked thread");
         t->Fork(OutputTidUid, 1);
-        currentThread->Yield();
     }
     for (int i=60;i<128;i++){
         Thread *t = newThread("forked thread");
         t->Fork(OutputTidUid, 0);
-        currentThread->Yield();
     }
+    currentThread->Yield();
     for (int i=60;i<128;i++){
         Thread *t = newThread("forked thread");
         t->Fork(OutputTidUid, 1);
-        currentThread->Yield();
     }
     currentThread->Yield();
     TS();
+}
+
+//----------------------------------------------------------------------
+// ThreadTest3
+//----------------------------------------------------------------------
+
+void LoopThread(int arg){
+    for(int i=0;i<100;i++){
+        if(i==50)currentThread->setPriority(8);
+        printf("%d\n",arg);
+        interrupt->OneTick();
+    }
+}
+
+void ThreadTest3(){
+    DEBUG('t', "Entering ThreadTest3\n");
+    for (int i=0;i<5;i++){
+        Thread *t = newThread("loop thread");
+        t->setPriority(i);
+        t->Fork(LoopThread, i);
+    }
 }
 
 //----------------------------------------------------------------------
@@ -110,6 +128,9 @@ ThreadTest()
 	break;
     case 2:
     ThreadTest2();
+    break;
+    case 3:
+    ThreadTest3();
     break;
     default:
 	printf("No test specified.\n");

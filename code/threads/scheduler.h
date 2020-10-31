@@ -26,6 +26,7 @@ class Scheduler {
     Thread* FindNextToRun();		// Dequeue first thread on the ready 
 					// list, if any, and return thread.
     void Run(Thread* nextThread);	// Cause nextThread to start running
+    void AfterSwitch();
     void Print();			// Print contents of ready list
     
   private:

@@ -64,7 +64,7 @@ void OutputTidUid(int sleep)
         IntStatus oldLevel = interrupt->SetLevel(IntOff);
         currentThread->Sleep();
         (void) interrupt->SetLevel(oldLevel);
-    } else currentThread->Finish();
+    }
 }
 
 //----------------------------------------------------------------------
@@ -76,17 +76,23 @@ void
 ThreadTest2()
 {
     DEBUG('t', "Entering ThreadTest2\n");
+    currentThread->setPriority(10);
     for (int i=1;i<60;i++){
         Thread *t = newThread("forked thread");
+        t->setPriority(11);
         t->Fork(OutputTidUid, 1);
     }
     for (int i=60;i<128;i++){
         Thread *t = newThread("forked thread");
+        t->setPriority(11);
         t->Fork(OutputTidUid, 0);
     }
+    currentThread->setPriority(12);
     currentThread->Yield();
+    currentThread->setPriority(10);
     for (int i=60;i<128;i++){
         Thread *t = newThread("forked thread");
+        t->setPriority(11);
         t->Fork(OutputTidUid, 1);
     }
     currentThread->Yield();
@@ -98,20 +104,22 @@ ThreadTest2()
 //----------------------------------------------------------------------
 
 void LoopThread(int arg){
-    for(int i=0;i<100;i++){
-        if(i==50)currentThread->setPriority(8);
-        printf("%d\n",arg);
+    for(int i=0;i<10000;i++){
+        if (arg<5&&i==50){
+            Thread *t = newThread("loop thread");  
+            t->setPriority(4-arg);
+            t->Fork(LoopThread, arg+1);
+        }
+        printf("%d: %d %d\n",arg,currentThread->getPriority(),currentThread->getTimeSlice());
         interrupt->OneTick();
     }
 }
 
 void ThreadTest3(){
     DEBUG('t', "Entering ThreadTest3\n");
-    for (int i=0;i<5;i++){
-        Thread *t = newThread("loop thread");
-        t->setPriority(i);
-        t->Fork(LoopThread, i);
-    }
+    Thread *t = newThread("loop thread");  
+    t->setPriority(5);
+    t->Fork(LoopThread, 0);
 }
 
 //----------------------------------------------------------------------

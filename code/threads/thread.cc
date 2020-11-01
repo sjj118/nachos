@@ -248,7 +248,8 @@ Thread::Sleep ()
 //----------------------------------------------------------------------
 
 static void ThreadFinish()    { currentThread->Finish(); }
-static void InterruptEnable() { scheduler->AfterSwitch();interrupt->Enable();}
+static void ThreadStartup()    { scheduler->AfterSwitch(); interrupt->Enable(); }
+static void InterruptEnable() { interrupt->Enable();}
 void ThreadPrint(int arg){ Thread *t = (Thread *)arg; t->Print(); }
 
 void TS(){
@@ -300,7 +301,7 @@ Thread::StackAllocate (VoidFunctionPtr func, int arg)
 #endif  // HOST_SNAKE
     
     machineState[PCState] = (int) ThreadRoot;
-    machineState[StartupPCState] = (int) InterruptEnable;
+    machineState[StartupPCState] = (int) ThreadStartup;
     machineState[InitialPCState] = (int) func;
     machineState[InitialArgState] = arg;
     machineState[WhenDonePCState] = (int) ThreadFinish;

@@ -85,12 +85,17 @@ class Thread {
     int machineState[MachineStateSize];  // all registers except for stackTop
     int uid, tid;       // user id, thread id
     int priority;       // priority
+    int timeSlice;      // time slice
 
   public:
     int getUid() { return uid; }
     int getTid() { return tid; }
     int getPriority() { return priority; }
-    void setPriority(int prio) { priority = prio; }
+    void setPriority(int prio) { priority = prio > 0 ? prio : 0; }
+    void promotePriority(int num) { priority -= num; if (priority < 0) priority = 0; }
+    void resetTimeSlice() { timeSlice = 1 << priority; }
+    int getTimeSlice() { return timeSlice; }
+    bool decreaseTimeSlice() { return --timeSlice > 0; }
     Thread(char* debugName);		// initialize a Thread 
     ~Thread(); 				// deallocate a Thread
 					// NOTE -- thread being deleted

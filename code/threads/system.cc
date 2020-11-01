@@ -66,11 +66,15 @@ extern void Cleanup();
 //	"dummy" is because every interrupt handler takes one argument,
 //		whether it needs it or not.
 //----------------------------------------------------------------------
-static void
-TimerInterruptHandler(int dummy)
-{
-    if (interrupt->getStatus() != IdleMode)
-	interrupt->YieldOnReturn();
+static void TimerInterruptHandler(int dummy) {
+    if (interrupt->getStatus() != IdleMode) {
+        if (!currentThread->decreaseTimeSlice()) {
+            interrupt->YieldOnReturn();
+            currentThread->promotePriority(-1);
+        } else if (currentThread->getPriority() > scheduler->highestPriority()){
+            interrupt->YieldOnReturn();
+        }
+    }
 }
 
 //----------------------------------------------------------------------

@@ -56,6 +56,7 @@ Scheduler::ReadyToRun (Thread *thread)
     DEBUG('t', "Putting thread %s on ready list.\n", thread->getName());
 
     thread->setStatus(READY);
+    thread->resetTimeSlice();
     readyList->SortedInsert((void *)thread, thread->getPriority());
 }
 
@@ -71,6 +72,12 @@ Thread *
 Scheduler::FindNextToRun ()
 {
     return (Thread *)readyList->SortedRemove(NULL);
+}
+
+int Scheduler::highestPriority(){
+    Thread *thread=(Thread *)readyList->front();
+    if (!thread) return 65536;
+    return thread->getPriority();
 }
 
 //----------------------------------------------------------------------

@@ -236,3 +236,13 @@ List::SortedRemove(int *keyPtr)
     return thing;
 }
 
+void *List::front() {
+    ListElement *element = first;
+    void *thing;
+
+    if (IsEmpty()) 
+	return NULL;
+
+    thing = first->item;
+    return thing;
+}

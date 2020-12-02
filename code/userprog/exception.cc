@@ -48,16 +48,56 @@
 //	are in machine.h.
 //----------------------------------------------------------------------
 
+void PageFaultHandler(){
+    ASSERT(FALSE);
+}
+
+void TLBMissHandler(){
+    int virtAddr = machine->registers[BadVAddrReg];
+    unsigned int vpn = (unsigned) virtAddr / PageSize;
+    if (vpn >= machine->pageTableSize) {
+		DEBUG('a', "virtual page # %d too large for page table size %d!\n", virtAddr, machine->pageTableSize);
+		ASSERT(FALSE);
+	} else if (!machine->pageTable[vpn].valid) {
+		DEBUG('a', "virtual page # %d too large for page table size %d!\n", virtAddr, machine->pageTableSize);
+		PageFaultHandler();
+	}
+	TranslationEntry *entry = &machine->pageTable[vpn];
+    TranslationEntry *replaced;
+#ifndef TLB_LRU
+    replaced = &machine->tlb[machine->ptr++];
+    if(machine->ptr == TLBSize) machine->ptr = 0;
+#else
+    replaced = &machine->tlb[0];
+    for(int i=0;i<TLBSize;i++){
+        if(!machine->tlb[i].valid){
+            replaced = &machine->tlb[i];
+            break;
+        }
+        if(machine->tlb[i].time < replaced->time) replaced = &machine->tlb[i];
+    }
+#endif
+    if(replaced->valid) machine->pageTable[replaced->virtualPage] = *replaced;
+    *replaced = *entry;
+}
+
 void
 ExceptionHandler(ExceptionType which)
 {
     int type = machine->ReadRegister(2);
 
     if ((which == SyscallException) && (type == SC_Halt)) {
-	DEBUG('a', "Shutdown, initiated by user program.\n");
-   	interrupt->Halt();
+        DEBUG('T', "TLB Miss: %d, TLB Hit: %d, Total Translate: %d, TLB Miss Rate: %.2lf%%\n", TLBMissCount, TranslateCount-TLBMissCount, TranslateCount, TLBMissCount*100.0/TranslateCount);
+        DEBUG('a', "Shutdown, initiated by user program.\n");
+        interrupt->Halt();
+    } else if(which == PageFaultException){
+        if(machine->tlb == NULL){
+            PageFaultHandler();
+        } else {
+            TLBMissHandler();
+        }
     } else {
-	printf("Unexpected user mode exception %d %d\n", which, type);
-	ASSERT(FALSE);
+        printf("Unexpected user mode exception %d %d\n", which, type);
+        ASSERT(FALSE);
     }
 }

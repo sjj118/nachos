@@ -76,6 +76,12 @@ Thread::~Thread()
     thread_list[tid] = NULL;
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
     tid_pool[tid_pool_num++]=tid;
+#ifdef USER_PROGRAM
+    if(space)delete space;
+    char vmname[20];
+    sprintf(vmname, "VirtualMemory%d", tid);
+    fileSystem->Remove(vmname);
+#endif
     (void) interrupt->SetLevel(oldLevel);
 }
 
@@ -198,7 +204,8 @@ Thread::Yield ()
     
     scheduler->ReadyToRun(this);
     nextThread = scheduler->FindNextToRun();
-	scheduler->Run(nextThread);
+    if(nextThread == this) status = RUNNING;
+	else scheduler->Run(nextThread);
 
     (void) interrupt->SetLevel(oldLevel);
 }
@@ -237,6 +244,46 @@ Thread::Sleep ()
 	interrupt->Idle();	// no one to run, wait for an interrupt
         
     scheduler->Run(nextThread); // returns when we've been signalled
+}
+
+//----------------------------------------------------------------------
+// Thread::Suspend
+//----------------------------------------------------------------------
+void Thread::Suspend (){
+    Thread *nextThread;
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);
+    
+    ASSERT(this == currentThread);
+    
+    DEBUG('t', "Yielding thread \"%s\"\n", getName());
+    
+    scheduler->ReadyToRun(this);
+    nextThread = scheduler->FindNextToRun();
+    if(nextThread == this) status = RUNNING;
+	else{
+        status = SUSPENDED;
+#ifdef USE_TLB
+        for(int i=0;i<TLBSize;i++)if(machine->tlb[i].valid){
+            machine->pageTable[machine->tlb[i].virtualPage] = machine->tlb[i];
+            machine->tlb[i].valid = FALSE;
+        }
+#endif
+        char vmname[20];
+        sprintf(vmname, "VirtualMemory%d", tid);
+        OpenFile *vm = fileSystem->Open(vmname);
+        for(int i=0;i<machine->pageTableSize;i++)
+            if(machine->pageTable[i].valid){
+                if(machine->pageTable[i].dirty){
+                    vm->WriteAt(machine->mainMemory + machine->pageTable[i].physicalPage * PageSize, PageSize, i * PageSize);
+                    machine->pageTable[i].dirty = FALSE;
+                }
+                machine->bitmap->Clear(machine->pageTable[i].physicalPage);
+                machine->pageTable[i].valid = FALSE;
+            }
+        scheduler->Run(nextThread);
+    }
+
+    (void) interrupt->SetLevel(oldLevel);
 }
 
 //----------------------------------------------------------------------

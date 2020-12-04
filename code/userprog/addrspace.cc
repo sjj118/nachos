@@ -70,6 +70,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		(WordToHost(noffH.noffMagic) == NOFFMAGIC))
     	SwapHeader(&noffH);
     ASSERT(noffH.noffMagic == NOFFMAGIC);
+    // printf("%d %d %d %d %d %d\n",noffH.code.size,noffH.code.virtualAddr,noffH.initData.size,noffH.initData.virtualAddr,noffH.uninitData.size,noffH.uninitData.virtualAddr);
 
 // how big is address space?
     size = noffH.code.size + noffH.initData.size + noffH.uninitData.size 
@@ -78,44 +79,50 @@ AddrSpace::AddrSpace(OpenFile *executable)
     numPages = divRoundUp(size, PageSize);
     size = numPages * PageSize;
 
-    ASSERT(numPages <= NumPhysPages);		// check we're not trying
+    // ASSERT(numPages <= NumPhysPages);		// check we're not trying
 						// to run anything too big --
 						// at least until we have
 						// virtual memory
 
-    DEBUG('a', "Initializing address space, num pages %d, size %d\n", 
-					numPages, size);
+    DEBUG('a', "Initializing address space, num pages %d, size %d\n", numPages, size);
+    
+    char vmname[20];
+    sprintf(vmname, "VirtualMemory%d", currentThread->getTid());
+    fileSystem->Create(vmname, size);
+
 // first, set up the translation 
     pageTable = new TranslationEntry[numPages];
     for (i = 0; i < numPages; i++) {
-	pageTable[i].virtualPage = i;	// for now, virtual page # = phys page #
-	pageTable[i].physicalPage = i;
-	pageTable[i].valid = TRUE;
-	pageTable[i].use = FALSE;
-	pageTable[i].dirty = FALSE;
-	pageTable[i].readOnly = FALSE;  // if the code segment was entirely on 
-					// a separate page, we could set its 
-					// pages to be read-only
+        pageTable[i].virtualPage = i;
+        pageTable[i].valid = FALSE;     // no physics page
+        pageTable[i].use = FALSE;
+        pageTable[i].dirty = FALSE;
+        pageTable[i].readOnly = FALSE;  // if the code segment was entirely on 
+                        // a separate page, we could set its 
+                        // pages to be read-only
     }
     
 // zero out the entire address space, to zero the unitialized data segment 
 // and the stack segment
-    bzero(machine->mainMemory, size);
+    // bzero(machine->mainMemory, size);
 
 // then, copy in the code and data segments into memory
+    OpenFile *vm = fileSystem->Open(vmname);
     if (noffH.code.size > 0) {
-        DEBUG('a', "Initializing code segment, at 0x%x, size %d\n", 
-			noffH.code.virtualAddr, noffH.code.size);
-        executable->ReadAt(&(machine->mainMemory[noffH.code.virtualAddr]),
-			noffH.code.size, noffH.code.inFileAddr);
+        DEBUG('a', "Initializing code segment, at 0x%x, size %d\n", noffH.code.virtualAddr, noffH.code.size);
+        char *buffer = new char[noffH.code.size];
+        executable->ReadAt(buffer, noffH.code.size, noffH.code.inFileAddr);
+        vm->WriteAt(buffer, noffH.code.size, noffH.code.virtualAddr);
+        delete buffer;
     }
     if (noffH.initData.size > 0) {
-        DEBUG('a', "Initializing data segment, at 0x%x, size %d\n", 
-			noffH.initData.virtualAddr, noffH.initData.size);
-        executable->ReadAt(&(machine->mainMemory[noffH.initData.virtualAddr]),
-			noffH.initData.size, noffH.initData.inFileAddr);
+        DEBUG('a', "Initializing data segment, at 0x%x, size %d\n", noffH.initData.virtualAddr, noffH.initData.size);
+        char *buffer = new char[noffH.initData.size];
+        executable->ReadAt(buffer, noffH.initData.size, noffH.initData.inFileAddr);
+        vm->WriteAt(buffer, noffH.initData.size, noffH.initData.virtualAddr);
+        delete buffer;
     }
-
+    delete vm;
 }
 
 //----------------------------------------------------------------------
@@ -123,9 +130,11 @@ AddrSpace::AddrSpace(OpenFile *executable)
 // 	Dealloate an address space.  Nothing for now!
 //----------------------------------------------------------------------
 
-AddrSpace::~AddrSpace()
-{
-   delete pageTable;
+AddrSpace::~AddrSpace(){
+    for(int i=0;i<numPages;i++)
+        if(pageTable[i].valid)
+            machine->bitmap->Clear(pageTable[i].physicalPage);
+    delete pageTable;
 }
 
 //----------------------------------------------------------------------
@@ -168,8 +177,14 @@ AddrSpace::InitRegisters()
 //	For now, nothing!
 //----------------------------------------------------------------------
 
-void AddrSpace::SaveState() 
-{}
+void AddrSpace::SaveState() {
+#ifdef USE_TLB
+    for(int i=0;i<TLBSize;i++)if(machine->tlb[i].valid){
+        machine->pageTable[machine->tlb[i].virtualPage] = machine->tlb[i];
+        machine->tlb[i].valid = FALSE;
+    }
+#endif
+}
 
 //----------------------------------------------------------------------
 // AddrSpace::RestoreState

@@ -186,11 +186,14 @@ void
 Cleanup()
 {
     printf("\nCleaning up...\n");
+    currentThread = NULL;
+    delete threadToBeDestroyed;
 #ifdef NETWORK
     delete postOffice;
 #endif
-    
 #ifdef USER_PROGRAM
+    machine->bitmap->Print();
+    DEBUG('T', "TLB Miss: %d, TLB Hit: %d, Total Translate: %d, TLB Miss Rate: %.2lf%%\n", TLBMissCount, TranslateCount-TLBMissCount, TranslateCount, TLBMissCount*100.0/TranslateCount);
     delete machine;
 #endif
 

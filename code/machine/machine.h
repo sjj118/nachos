@@ -25,6 +25,7 @@
 #include "utility.h"
 #include "translate.h"
 #include "disk.h"
+#include "bitmap.h"
 
 // Definitions related to the size, and format of user memory
 
@@ -32,7 +33,7 @@
 					// the disk sector size, for
 					// simplicity
 
-#define NumPhysPages    1024
+#define NumPhysPages    32
 #define MemorySize 	(NumPhysPages * PageSize)
 #define TLBSize		4		// if there is a TLB, make it small
 
@@ -178,12 +179,11 @@ class Machine {
 
     TranslationEntry *tlb;		// this pointer should be considered 
 					// "read-only" to Nachos kernel code
-#ifndef TLB_LRU
-	int ptr;
-#endif
 
     TranslationEntry *pageTable;
     unsigned int pageTableSize;
+
+	BitMap *bitmap;
 
   private:
     bool singleStep;		// drop back into the debugger after each

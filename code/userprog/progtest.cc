@@ -20,15 +20,14 @@
 //	memory, and jump to it.
 //----------------------------------------------------------------------
 
-void
-StartProcess(char *filename)
-{
+void UserProgThread(int arg){
+    char *filename = (char*)arg;
     OpenFile *executable = fileSystem->Open(filename);
     AddrSpace *space;
 
     if (executable == NULL) {
-	printf("Unable to open file %s\n", filename);
-	return;
+        printf("Unable to open file %s\n", filename);
+        return;
     }
     space = new AddrSpace(executable);    
     currentThread->space = space;
@@ -42,6 +41,11 @@ StartProcess(char *filename)
     ASSERT(FALSE);			// machine->Run never returns;
 					// the address space exits
 					// by doing the syscall "exit"
+}
+
+void StartProcess(char *filename){
+    Thread *t = newThread(filename);
+    t->Fork(UserProgThread, (int)filename);
 }
 
 // Data structures needed for the console test.  Threads making
@@ -81,4 +85,12 @@ ConsoleTest (char *in, char *out)
 	writeDone->P() ;        // wait for write to finish
 	if (ch == 'q') return;  // if q, quit
     }
+}
+
+//----------------------------------------------------------------------
+// MultiThreadTest
+//----------------------------------------------------------------------
+
+void MultiThreadTest(){
+
 }

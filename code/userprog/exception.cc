@@ -49,24 +49,61 @@
 //----------------------------------------------------------------------
 
 void PageFaultHandler(){
-    ASSERT(FALSE);
-}
-
-void TLBMissHandler(){
+    static int replaced = 0;
+    unsigned int ppn;
     int virtAddr = machine->registers[BadVAddrReg];
     unsigned int vpn = (unsigned) virtAddr / PageSize;
     if (vpn >= machine->pageTableSize) {
-		DEBUG('a', "virtual page # %d too large for page table size %d!\n", virtAddr, machine->pageTableSize);
+		DEBUG('a', "virtual page # %d too large for page table size %d!\n", vpn, machine->pageTableSize);
+		ASSERT(FALSE);
+	}
+    char vmname[20];
+    sprintf(vmname, "VirtualMemory%d", currentThread->getTid());
+    OpenFile *vm = fileSystem->Open(vmname);
+    if((ppn = machine->bitmap->Find()) == -1){      // physics memory full
+#ifdef USE_TLB
+        for(int i=0;i<TLBSize;i++)if(machine->tlb[i].valid){
+            machine->pageTable[machine->tlb[i].virtualPage] = machine->tlb[i];
+            machine->tlb[i].valid = FALSE;
+        }
+#endif
+        while(true){
+            if(machine->pageTable[replaced].valid){
+                if(machine->pageTable[replaced].use) machine->pageTable[replaced].use = FALSE;
+                else break;
+            }
+            if(++replaced == machine->pageTableSize) replaced = 0;
+        }
+        ppn = machine->pageTable[replaced].physicalPage;
+        if(machine->pageTable[replaced].dirty){
+            vm->WriteAt(machine->mainMemory + ppn * PageSize, PageSize, replaced * PageSize);
+            machine->pageTable[replaced].dirty = FALSE;
+        }
+        machine->pageTable[replaced].valid = FALSE;
+        if(++replaced == machine->pageTableSize) replaced = 0;
+    }
+    machine->pageTable[vpn].valid = TRUE;
+    machine->pageTable[vpn].physicalPage = ppn;
+    vm->ReadAt(machine->mainMemory + ppn * PageSize, PageSize, vpn * PageSize);
+    delete vm;
+}
+
+void TLBMissHandler(){
+    static int ptr = 0;
+    int virtAddr = machine->registers[BadVAddrReg];
+    unsigned int vpn = (unsigned) virtAddr / PageSize;
+    if (vpn >= machine->pageTableSize) {
+		DEBUG('a', "virtual page # %d too large for page table size %d!\n", vpn, machine->pageTableSize);
 		ASSERT(FALSE);
 	} else if (!machine->pageTable[vpn].valid) {
-		DEBUG('a', "virtual page # %d too large for page table size %d!\n", virtAddr, machine->pageTableSize);
+		DEBUG('a', "virtual page # %d fault!\n", vpn);
 		PageFaultHandler();
 	}
 	TranslationEntry *entry = &machine->pageTable[vpn];
     TranslationEntry *replaced;
 #ifndef TLB_LRU
-    replaced = &machine->tlb[machine->ptr++];
-    if(machine->ptr == TLBSize) machine->ptr = 0;
+    replaced = &machine->tlb[ptr++];
+    if(ptr == TLBSize) ptr = 0;
 #else
     replaced = &machine->tlb[0];
     for(int i=0;i<TLBSize;i++){
@@ -86,14 +123,25 @@ ExceptionHandler(ExceptionType which)
 {
     int type = machine->ReadRegister(2);
 
-    if ((which == SyscallException) && (type == SC_Halt)) {
-        DEBUG('T', "TLB Miss: %d, TLB Hit: %d, Total Translate: %d, TLB Miss Rate: %.2lf%%\n", TLBMissCount, TranslateCount-TLBMissCount, TranslateCount, TLBMissCount*100.0/TranslateCount);
-        DEBUG('a', "Shutdown, initiated by user program.\n");
-        interrupt->Halt();
+    if (which == SyscallException) {
+        switch (type){
+        case SC_Halt:
+            DEBUG('T', "Shutdown, initiated by user program.\n");
+            interrupt->Halt();
+            break;
+        case SC_Exit:
+            DEBUG('T', "Exit with code %d.\n", machine->ReadRegister(4));
+            currentThread->Finish();
+            break;
+        default:
+            break;
+        }
     } else if(which == PageFaultException){
         if(machine->tlb == NULL){
+            DEBUG('a', "Page Fault.\n");
             PageFaultHandler();
         } else {
+            DEBUG('a', "TLB Miss.\n");
             TLBMissHandler();
         }
     } else {

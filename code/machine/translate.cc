@@ -215,11 +215,11 @@ Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
     if (tlb == NULL) {		// => page table => vpn is index into table
 		if (vpn >= pageTableSize) {
 			DEBUG('a', "virtual page # %d too large for page table size %d!\n", 
-				virtAddr, pageTableSize);
+				vpn, pageTableSize);
 			return AddressErrorException;
 		} else if (!pageTable[vpn].valid) {
-			DEBUG('a', "virtual page # %d too large for page table size %d!\n", 
-				virtAddr, pageTableSize);
+			DEBUG('a', "virtual page # %d fault!\n", 
+				vpn);
 			return PageFaultException;
 		}
 		entry = &pageTable[vpn];

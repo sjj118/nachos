@@ -240,7 +240,7 @@ Interrupt::Idle()
 //----------------------------------------------------------------------
 void
 Interrupt::Halt()
-{
+{  
     printf("Machine halting!\n\n");
     stats->Print();
     Cleanup();     // Never returns.

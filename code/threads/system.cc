@@ -20,6 +20,7 @@ Timer *timer;				// the hardware timer device,
 					// for invoking context switches
 
 int tid_pool[MAX_THREAD], tid_pool_num=0;
+FileHeader* openfile_table[NumSectors];
 
 Thread *thread_list[MAX_THREAD];
 
@@ -186,8 +187,6 @@ void
 Cleanup()
 {
     printf("\nCleaning up...\n");
-    currentThread = NULL;
-    delete threadToBeDestroyed;
 #ifdef NETWORK
     delete postOffice;
 #endif

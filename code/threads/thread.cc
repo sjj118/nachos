@@ -71,16 +71,17 @@ Thread::~Thread()
     DEBUG('t', "Deleting thread \"%s\"\n", name);
 
     ASSERT(this != currentThread);
-    if (stack != NULL)
-	DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
+    if (stack != NULL) DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
     thread_list[tid] = NULL;
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
     tid_pool[tid_pool_num++]=tid;
 #ifdef USER_PROGRAM
-    if(space)delete space;
-    char vmname[20];
-    sprintf(vmname, "VirtualMemory%d", tid);
-    fileSystem->Remove(vmname);
+    if(space){
+        delete space;
+        char vmname[20];
+        printf("%s\n",vmname);
+        fileSystem->Remove(vmname);
+    }
 #endif
     (void) interrupt->SetLevel(oldLevel);
 }

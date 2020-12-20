@@ -15,6 +15,7 @@
 #include "filehdr.h"
 #include "openfile.h"
 #include "system.h"
+#include "synch.h"
 #ifdef HOST_SPARC
 #include <strings.h>
 #endif
@@ -29,7 +30,10 @@
 
 OpenFile::OpenFile(int sector)
 { 
-    hdr = new FileHeader;
+    if(openfile_table[sector]) hdr = openfile_table[sector];
+    else openfile_table[sector] = hdr = new FileHeader;
+    hdr->refcount++;
+    this->sector = sector;
     hdr->FetchFrom(sector);
     seekPosition = 0;
 }
@@ -39,9 +43,12 @@ OpenFile::OpenFile(int sector)
 // 	Close a Nachos file, de-allocating any in-memory data structures.
 //----------------------------------------------------------------------
 
-OpenFile::~OpenFile()
-{
-    delete hdr;
+OpenFile::~OpenFile(){
+    if(--hdr->refcount == 0){
+        openfile_table[sector] = NULL;
+        hdr->WriteBack(sector);
+        delete hdr;
+    }
 }
 
 //----------------------------------------------------------------------
@@ -116,6 +123,9 @@ OpenFile::Write(char *into, int numBytes)
 int
 OpenFile::ReadAt(char *into, int numBytes, int position)
 {
+    bool selfcall=FALSE;
+    if(hdr->lock->isHeldByCurrentThread())selfcall=TRUE;
+    if(!selfcall)hdr->lock->Acquire();
     int fileLength = hdr->FileLength();
     int i, firstSector, lastSector, numSectors;
     char *buf;
@@ -140,12 +150,19 @@ OpenFile::ReadAt(char *into, int numBytes, int position)
     // copy the part we want
     bcopy(&buf[position - (firstSector * SectorSize)], into, numBytes);
     delete [] buf;
+    hdr->UpdateVisitedTime();
+    if(!selfcall)hdr->lock->Release();
     return numBytes;
 }
 
-int
-OpenFile::WriteAt(char *from, int numBytes, int position)
-{
+int OpenFile::WriteAt(char *from, int numBytes, int position){
+    hdr->lock->Acquire();
+    if(numBytes+position>hdr->FileLength()){
+        BitMap *freeMap = new BitMap(NumSectors);
+        freeMap->FetchFrom(fileSystem->freeMapFile);
+        hdr->ExpandSize(freeMap, numBytes+position);
+        freeMap->WriteBack(fileSystem->freeMapFile);
+    }
     int fileLength = hdr->FileLength();
     int i, firstSector, lastSector, numSectors;
     bool firstAligned, lastAligned;
@@ -182,6 +199,8 @@ OpenFile::WriteAt(char *from, int numBytes, int position)
         synchDisk->WriteSector(hdr->ByteToSector(i * SectorSize), 
 					&buf[(i - firstSector) * SectorSize]);
     delete [] buf;
+    hdr->UpdateModifiedTime();
+    hdr->lock->Release();
     return numBytes;
 }
 
@@ -190,8 +209,10 @@ OpenFile::WriteAt(char *from, int numBytes, int position)
 // 	Return the number of bytes in the file.
 //----------------------------------------------------------------------
 
-int
-OpenFile::Length() 
-{ 
+int OpenFile::Length() {
     return hdr->FileLength(); 
+}
+
+bool OpenFile::IsDir() {
+    return hdr->GetFileType() == DirectoryFile;
 }

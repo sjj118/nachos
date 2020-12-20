@@ -15,6 +15,7 @@
 #include "interrupt.h"
 #include "stats.h"
 #include "timer.h"
+#include "filehdr.h"
 
 // Initialization and cleanup routines
 extern void Initialize(int argc, char **argv); 	// Initialization,
@@ -34,7 +35,7 @@ extern int tid_pool[MAX_THREAD], tid_pool_num;
 extern int getNextTid();
 
 extern Thread *thread_list[MAX_THREAD];
-
+extern FileHeader* openfile_table[NumSectors];
 
 #ifdef USER_PROGRAM
 #include "machine.h"

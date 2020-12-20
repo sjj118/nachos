@@ -17,10 +17,11 @@
 // All rights reserved.  See copyright.h for copyright notice and limitation 
 // of liability and disclaimer of warranty provisions.
 
+#include "copyright.h"
+
 #ifndef OPENFILE_H
 #define OPENFILE_H
 
-#include "copyright.h"
 #include "utility.h"
 
 #ifdef FILESYS_STUB			// Temporarily implement calls to 
@@ -85,9 +86,14 @@ class OpenFile {
 					// file (this interface is simpler 
 					// than the UNIX idiom -- lseek to 
 					// end of file, tell, lseek back 
+	bool IsDir();
+
+	FileHeader* GetHeader(){return hdr;}
+	int GetSector(){return sector;}
     
   private:
     FileHeader *hdr;			// Header for this file 
+	int sector;                 // 文件头所在扇区号，方便写回
     int seekPosition;			// Current position within the file
 };
 

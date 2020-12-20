@@ -23,9 +23,18 @@
 // of liability and disclaimer of warranty provisions.
 
 #include "copyright.h"
-
+#include "synch.h"
 #include "system.h"
 #include "filehdr.h"
+
+FileHeader::FileHeader(){
+    lock = new Lock("file header lock");
+}
+
+FileHeader::~FileHeader(){
+    delete lock;
+}
+
 
 //----------------------------------------------------------------------
 // FileHeader::Allocate
@@ -38,16 +47,165 @@
 //	"fileSize" is the bit map of free disk sectors
 //----------------------------------------------------------------------
 
-bool
-FileHeader::Allocate(BitMap *freeMap, int fileSize)
-{ 
+bool FileHeader::Allocate(BitMap *freeMap, int fileSize, FileType fileType){
+    this->fileType = fileType;
+    lastModifiedTime = lastVisitedTime = createdTime = time(0);
     numBytes = fileSize;
     numSectors  = divRoundUp(fileSize, SectorSize);
-    if (freeMap->NumClear() < numSectors)
-	return FALSE;		// not enough space
+    int remainSectors = numSectors;
+    for(int i = 0;i < NumDirect && remainSectors;i++){      // 直接索引
+        dataSectors[i] = freeMap->Find();
+        ASSERT(dataSectors[i] != -1);
+        --remainSectors;
+    }
+    if(!remainSectors)return TRUE;    // 一级索引
+    dataSectors[NumDirect] = freeMap->Find();
+    ASSERT(dataSectors[NumDirect] != -1);
+    int *buffer1 = new int[NumIndirect];
+	for(int i = 0;i < NumIndirect && remainSectors;i++){
+        buffer1[i] = freeMap->Find();
+        ASSERT(buffer1[i] != -1);
+        --remainSectors;
+    }
+    synchDisk->WriteSector(dataSectors[NumDirect], (char *)buffer1); 
+    delete[] buffer1;
+    if(!remainSectors)return TRUE;    // 二级索引
+    dataSectors[NumDirect + 1] = freeMap->Find();
+    ASSERT(dataSectors[NumDirect + 1] != -1);
+    buffer1 = new int[NumIndirect];
+    int *buffer2 = new int[NumIndirect];
+    for(int i = 0;i < NumIndirect && remainSectors;i++){ 
+        buffer1[i] = freeMap->Find();
+        ASSERT(buffer1[i] != -1);
+        for(int j = 0;j < NumIndirect && remainSectors;j++){
+            buffer2[j] = freeMap->Find();
+            ASSERT(buffer2[j] != -1);
+            --remainSectors;
+        }
+        synchDisk->WriteSector(buffer1[i], (char *)buffer2); 
+    }
+    synchDisk->WriteSector(dataSectors[NumDirect + 1], (char *)buffer1); 
+    delete[] buffer1;
+    delete[] buffer2;
+    if(!remainSectors)return TRUE;    // 三级索引
+    dataSectors[NumDirect + 2] = freeMap->Find();
+    ASSERT(dataSectors[NumDirect + 2] != -1);
+    buffer1 = new int[NumIndirect];
+    buffer2 = new int[NumIndirect];
+    int *buffer3 = new int[NumIndirect];
+    for(int i = 0;i < NumIndirect && remainSectors;i++){ 
+        buffer1[i] = freeMap->Find();
+        ASSERT(buffer1[i] != -1);
+        for(int j = 0;j < NumIndirect && remainSectors;j++){
+            buffer2[j] = freeMap->Find();
+            ASSERT(buffer2[j] != -1);
+            for(int k = 0;k < NumIndirect && remainSectors;k++){
+                buffer3[k] = freeMap->Find();
+                ASSERT(buffer3[k] != -1);
+                --remainSectors;
+            }
+            synchDisk->WriteSector(buffer2[j], (char *)buffer3); 
+        }
+        synchDisk->WriteSector(buffer1[i], (char *)buffer2); 
+    }
+    synchDisk->WriteSector(dataSectors[NumDirect + 2], (char *)buffer1); 
+    delete[] buffer1;
+    delete[] buffer2;
+    delete[] buffer3;
+    return TRUE;
+}
 
-    for (int i = 0; i < numSectors; i++)
-	dataSectors[i] = freeMap->Find();
+bool FileHeader::ExpandSize(BitMap *freeMap, int fileSize){
+    lastModifiedTime = lastVisitedTime = time(0);
+    int oldSectors = divRoundUp(numBytes, SectorSize);
+    numBytes = fileSize;
+    numSectors = divRoundUp(fileSize, SectorSize);
+    int remainSectors = numSectors;
+    for(int i = 0;i < NumDirect && remainSectors;i++){      // 直接索引
+        if(!oldSectors){
+            dataSectors[i] = freeMap->Find();
+            ASSERT(dataSectors[i] != -1);
+        }else --oldSectors;
+        --remainSectors;
+    }
+    if(!remainSectors)return TRUE;    // 一级索引
+    if(!oldSectors){
+        dataSectors[NumDirect] = freeMap->Find();
+        ASSERT(dataSectors[NumDirect] != -1);
+    }
+    int *buffer1 = new int[NumIndirect];
+    synchDisk->ReadSector(dataSectors[NumDirect], (char *)buffer1); 
+	for(int i = 0;i < NumIndirect && remainSectors;i++){
+        if(!oldSectors){
+            buffer1[i] = freeMap->Find();
+            ASSERT(buffer1[i] != -1);
+        }else --oldSectors;
+        --remainSectors;
+    }
+    if(!oldSectors)synchDisk->WriteSector(dataSectors[NumDirect], (char *)buffer1); 
+    delete[] buffer1;
+    if(!remainSectors)return TRUE;    // 二级索引
+    if(!oldSectors){
+        dataSectors[NumDirect + 1] = freeMap->Find();
+        ASSERT(dataSectors[NumDirect + 1] != -1);
+    }
+    buffer1 = new int[NumIndirect];
+    int *buffer2 = new int[NumIndirect];
+    synchDisk->ReadSector(dataSectors[NumDirect + 1], (char *)buffer1); 
+    for(int i = 0;i < NumIndirect && remainSectors;i++){ 
+        if(!oldSectors){
+            buffer1[i] = freeMap->Find();
+            ASSERT(buffer1[i] != -1);
+        }
+        synchDisk->ReadSector(buffer1[i], (char *)buffer2); 
+        for(int j = 0;j < NumIndirect && remainSectors;j++){
+            if(!oldSectors){
+                buffer2[j] = freeMap->Find();
+                ASSERT(buffer2[j] != -1);
+            }else --oldSectors;
+            --remainSectors;
+        }
+        if(!oldSectors)synchDisk->WriteSector(buffer1[i], (char *)buffer2); 
+    }
+    if(!oldSectors)synchDisk->WriteSector(dataSectors[NumDirect + 1], (char *)buffer1); 
+    delete[] buffer1;
+    delete[] buffer2;
+    if(!remainSectors)return TRUE;    // 三级索引
+    if(!oldSectors){
+        dataSectors[NumDirect + 2] = freeMap->Find();
+        ASSERT(dataSectors[NumDirect + 2] != -1);
+    }
+    buffer1 = new int[NumIndirect];
+    buffer2 = new int[NumIndirect];
+    int *buffer3 = new int[NumIndirect];
+    synchDisk->ReadSector(dataSectors[NumDirect + 2], (char *)buffer1); 
+    for(int i = 0;i < NumIndirect && remainSectors;i++){ 
+        if(!oldSectors){
+            buffer1[i] = freeMap->Find();
+            ASSERT(buffer1[i] != -1);
+        }
+        synchDisk->ReadSector(buffer1[i], (char *)buffer2); 
+        for(int j = 0;j < NumIndirect && remainSectors;j++){
+            if(!oldSectors){
+                buffer2[j] = freeMap->Find();
+                ASSERT(buffer2[j] != -1);
+            }
+            synchDisk->ReadSector(buffer2[j], (char *)buffer3); 
+            for(int k = 0;k < NumIndirect && remainSectors;k++){
+                if(!oldSectors){
+                    buffer3[k] = freeMap->Find();
+                    ASSERT(buffer3[k] != -1);
+                }else --oldSectors;
+                --remainSectors;
+            }
+            if(!oldSectors)synchDisk->WriteSector(buffer2[j], (char *)buffer3); 
+        }
+        if(!oldSectors)synchDisk->WriteSector(buffer1[i], (char *)buffer2); 
+    }
+    if(!oldSectors)synchDisk->WriteSector(dataSectors[NumDirect + 2], (char *)buffer1); 
+    delete[] buffer1;
+    delete[] buffer2;
+    delete[] buffer3;
     return TRUE;
 }
 
@@ -58,13 +216,67 @@ FileHeader::Allocate(BitMap *freeMap, int fileSize)
 //	"freeMap" is the bit map of free disk sectors
 //----------------------------------------------------------------------
 
-void 
-FileHeader::Deallocate(BitMap *freeMap)
-{
-    for (int i = 0; i < numSectors; i++) {
-	ASSERT(freeMap->Test((int) dataSectors[i]));  // ought to be marked!
-	freeMap->Clear((int) dataSectors[i]);
+void FileHeader::Deallocate(BitMap *freeMap){
+    int remainSectors = numSectors;
+    for(int i = 0;i < NumDirect && remainSectors;i++){      // 直接索引
+        ASSERT(freeMap->Test(dataSectors[i]));
+        freeMap->Clear(dataSectors[i]);
+        --remainSectors;
     }
+    if(!remainSectors)return;    // 一级索引
+    int *buffer1 = new int[NumIndirect];
+    ASSERT(freeMap->Test(dataSectors[NumDirect]));
+    synchDisk->ReadSector(dataSectors[NumDirect], (char *)buffer1);
+	for(int i = 0;i < NumIndirect && remainSectors;i++){
+        ASSERT(freeMap->Test(buffer1[i]));
+        freeMap->Clear(buffer1[i]);
+        --remainSectors;
+    }
+    freeMap->Clear(dataSectors[NumDirect]);
+    delete[] buffer1;
+    if(!remainSectors)return;    // 二级索引
+    buffer1 = new int[NumIndirect];
+    int *buffer2 = new int[NumIndirect];
+    ASSERT(freeMap->Test(dataSectors[NumDirect + 1]));
+    synchDisk->ReadSector(dataSectors[NumDirect + 1], (char *)buffer1);
+    for(int i = 0;i < NumIndirect && remainSectors;i++){ 
+        ASSERT(freeMap->Test(buffer1[i]));
+        synchDisk->ReadSector(buffer1[i], (char *)buffer2);
+        for(int j = 0;j < NumIndirect && remainSectors;j++){
+            ASSERT(freeMap->Test(buffer2[j]));
+            freeMap->Clear(buffer2[j]);
+            --remainSectors;
+        }
+        freeMap->Clear(buffer1[i]);
+    }
+    freeMap->Clear(dataSectors[NumDirect + 1]);
+    delete[] buffer1;
+    delete[] buffer2;
+    if(!remainSectors)return;    // 三级索引
+    buffer1 = new int[NumIndirect];
+    buffer2 = new int[NumIndirect];
+    int *buffer3 = new int[NumIndirect];
+    ASSERT(freeMap->Test(dataSectors[NumDirect + 2]));
+    synchDisk->ReadSector(dataSectors[NumDirect + 2], (char *)buffer1);
+    for(int i = 0;i < NumIndirect && remainSectors;i++){ 
+        ASSERT(freeMap->Test(buffer1[i]));
+        synchDisk->ReadSector(buffer1[i], (char *)buffer2);
+        for(int j = 0;j < NumIndirect && remainSectors;j++){
+            ASSERT(freeMap->Test(buffer2[j]));
+            synchDisk->ReadSector(buffer2[j], (char *)buffer3);
+            for(int k = 0;k < NumIndirect && remainSectors;k++){
+                ASSERT(freeMap->Test(buffer3[k]));
+                freeMap->Clear(buffer3[k]);
+                --remainSectors;
+            }
+            freeMap->Clear(buffer2[j]);
+        }
+        freeMap->Clear(buffer1[i]);
+    }
+    freeMap->Clear(dataSectors[NumDirect + 2]);
+    delete[] buffer1;
+    delete[] buffer2;
+    delete[] buffer3;
 }
 
 //----------------------------------------------------------------------
@@ -74,10 +286,9 @@ FileHeader::Deallocate(BitMap *freeMap)
 //	"sector" is the disk sector containing the file header
 //----------------------------------------------------------------------
 
-void
-FileHeader::FetchFrom(int sector)
-{
+void FileHeader::FetchFrom(int sector){
     synchDisk->ReadSector(sector, (char *)this);
+    numSectors  = divRoundUp(numBytes, SectorSize);
 }
 
 //----------------------------------------------------------------------
@@ -87,9 +298,7 @@ FileHeader::FetchFrom(int sector)
 //	"sector" is the disk sector to contain the file header
 //----------------------------------------------------------------------
 
-void
-FileHeader::WriteBack(int sector)
-{
+void FileHeader::WriteBack(int sector) {
     synchDisk->WriteSector(sector, (char *)this); 
 }
 
@@ -103,10 +312,43 @@ FileHeader::WriteBack(int sector)
 //	"offset" is the location within the file of the byte in question
 //----------------------------------------------------------------------
 
-int
-FileHeader::ByteToSector(int offset)
-{
-    return(dataSectors[offset / SectorSize]);
+int FileHeader::ByteToSector(int offset){
+    offset /= SectorSize;
+    if(offset < NumDirect) return dataSectors[offset];    // 直接索引
+    offset -= NumDirect;
+    if(offset < NumIndirect){       // 一级索引
+        int *buffer = new int[NumIndirect];
+        synchDisk->ReadSector(dataSectors[NumDirect], (char *)buffer);
+        int sector = buffer[offset];
+        delete[] buffer;
+        return sector;
+    }
+    offset -= NumIndirect;
+    if(offset < NumIndirect * NumIndirect){  // 二级索引
+        int *buffer = new int[NumIndirect];
+        synchDisk->ReadSector(dataSectors[NumDirect + 1], (char *)buffer);
+        int sector = buffer[offset / NumIndirect];
+        synchDisk->ReadSector(sector, (char *)buffer);
+        offset %= NumIndirect;
+        sector = buffer[offset];
+        delete[] buffer;
+        return sector;
+    }
+    offset -= NumIndirect * NumIndirect;
+    if(offset < NumIndirect * NumIndirect * NumIndirect){  // 三级索引
+        int *buffer = new int[NumIndirect];
+        synchDisk->ReadSector(dataSectors[NumDirect + 2], (char *)buffer);
+        int sector = buffer[offset / NumIndirect / NumIndirect];
+        synchDisk->ReadSector(sector, (char *)buffer);
+        offset %= NumIndirect * NumIndirect;
+        sector = buffer[offset / NumIndirect];
+        synchDisk->ReadSector(sector, (char *)buffer);
+        offset %= NumIndirect;
+        sector = buffer[offset];
+        delete[] buffer;
+        return sector;
+    }
+    ASSERT(FALSE);      // 太长
 }
 
 //----------------------------------------------------------------------
@@ -132,19 +374,32 @@ FileHeader::Print()
     int i, j, k;
     char *data = new char[SectorSize];
 
-    printf("FileHeader contents.  File size: %d.  File blocks:\n", numBytes);
-    for (i = 0; i < numSectors; i++)
-	printf("%d ", dataSectors[i]);
+    printf("FileHeader contents.  File size: %d.  ", numBytes);
+    printf("File type: %s.\n", fileType == DirectoryFile ? "Directory" : "Normal");
+    printf("Created time: %s", asctime(localtime(&createdTime)));
+    printf("Last visited time: %s", asctime(localtime(&lastVisitedTime)));
+    printf("Last modified time: %s", asctime(localtime(&lastModifiedTime)));
+    puts("File blocks:");
+    for (i = 0; i < numSectors; i++) printf("%d ", ByteToSector(i * SectorSize));
+    /*
     printf("\nFile contents:\n");
     for (i = k = 0; i < numSectors; i++) {
-	synchDisk->ReadSector(dataSectors[i], data);
+	    synchDisk->ReadSector(ByteToSector(i * SectorSize), data);
         for (j = 0; (j < SectorSize) && (k < numBytes); j++, k++) {
-	    if ('\040' <= data[j] && data[j] <= '\176')   // isprint(data[j])
-		printf("%c", data[j]);
+            if ('\040' <= data[j] && data[j] <= '\176')   // isprint(data[j])
+                printf("%c", data[j]);
             else
-		printf("\\%x", (unsigned char)data[j]);
-	}
+                printf("\\%x", (unsigned char)data[j]);
+	    }
         printf("\n"); 
-    }
+    }*/
     delete [] data;
+}
+
+void FileHeader::UpdateVisitedTime(){
+    lastVisitedTime = time(0);
+}
+
+void FileHeader::UpdateModifiedTime(){
+    lastVisitedTime = lastModifiedTime = time(0);
 }

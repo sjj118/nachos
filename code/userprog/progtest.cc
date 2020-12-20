@@ -11,6 +11,7 @@
 #include "copyright.h"
 #include "system.h"
 #include "console.h"
+#include "synchconsole.h"
 #include "addrspace.h"
 #include "synch.h"
 
@@ -87,10 +88,14 @@ ConsoleTest (char *in, char *out)
     }
 }
 
-//----------------------------------------------------------------------
-// MultiThreadTest
-//----------------------------------------------------------------------
+static SynchConsole *synchconsole;
 
-void MultiThreadTest(){
-
+void SynchConsoleTest(char *in, char *out){
+    char ch;
+    synchconsole = new SynchConsole(in, out);
+    for (;;) {
+	    ch = synchconsole->GetChar();
+	    synchconsole->PutChar(ch);
+	    if (ch == 'q') return;
+    }
 }

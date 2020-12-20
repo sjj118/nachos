@@ -16,9 +16,11 @@
 
 #include "disk.h"
 #include "bitmap.h"
+#include <ctime>
 
-#define NumDirect 	((SectorSize - 2 * sizeof(int)) / sizeof(int))
-#define MaxFileSize 	(NumDirect * SectorSize)
+#define NumDirect 	(((SectorSize - sizeof(int) - sizeof(FileType) - 3 * sizeof(time_t)) / sizeof(int)) - 3)
+#define NumIndirect (SectorSize / sizeof(int))
+#define MaxFileSize 	((NumDirect + NumIndirect + NumIndirect * NumIndirect + NumIndirect * NumIndirect * NumIndirect) * SectorSize)
 
 // The following class defines the Nachos "file header" (in UNIX terms,  
 // the "i-node"), describing where on disk to find all of the data in the file.
@@ -35,11 +37,18 @@
 // by allocating blocks for the file (if it is a new file), or by
 // reading it from disk.
 
+class Lock;
+
+enum FileType { DirectoryFile, NormalFile };
+
 class FileHeader {
   public:
-    bool Allocate(BitMap *bitMap, int fileSize);// Initialize a file header, 
+    FileHeader();
+    ~FileHeader();
+    bool Allocate(BitMap *bitMap, int fileSize, FileType fileType);// Initialize a file header, 
 						//  including allocating space 
 						//  on disk for the file data
+    bool ExpandSize(BitMap *bitMap, int fileSize);
     void Deallocate(BitMap *bitMap);  		// De-allocate this file's 
 						//  data blocks
 
@@ -56,11 +65,22 @@ class FileHeader {
 
     void Print();			// Print the contents of the file.
 
+    void UpdateVisitedTime();
+    void UpdateModifiedTime();
+    FileType GetFileType() {return fileType;}
+
   private:
     int numBytes;			// Number of bytes in the file
+    FileType fileType;            // 文件类型
+    time_t createdTime;           // 创建时间
+    time_t lastVisitedTime;       // 上次访问时间
+    time_t lastModifiedTime;      // 上次修改时间
+    int dataSectors[NumDirect + 3];		// Disk sector numbers for each data block in the file
     int numSectors;			// Number of data sectors in the file
-    int dataSectors[NumDirect];		// Disk sector numbers for each data 
-					// block in the file
+    char *path;                   // 路径，仅存储在内存中
+  public:
+    Lock *lock;
+    int refcount=0;
 };
 
 #endif // FILEHDR_H

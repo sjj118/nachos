@@ -42,8 +42,8 @@ Thread::Thread(char* threadName)
     uid = getuid();
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
     tid = getNextTid();
-    (void) interrupt->SetLevel(oldLevel);
     thread_list[tid] = this;
+    (void) interrupt->SetLevel(oldLevel);
 #ifdef USER_PROGRAM
     space = NULL;
 #endif
@@ -75,15 +75,10 @@ Thread::~Thread()
     thread_list[tid] = NULL;
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
     tid_pool[tid_pool_num++]=tid;
-#ifdef USER_PROGRAM
-    if(space){
-        delete space;
-        char vmname[20];
-        printf("%s\n",vmname);
-        fileSystem->Remove(vmname);
-    }
-#endif
     (void) interrupt->SetLevel(oldLevel);
+#ifdef USER_PROGRAM
+    if(space) delete space;
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -171,6 +166,13 @@ Thread::Finish ()
     DEBUG('t', "Finishing thread \"%s\"\n", getName());
     
     threadToBeDestroyed = currentThread;
+#ifdef USER_PROGRAM
+    if(currentThread->space) {
+        currentThread->space->lock->Acquire();
+        currentThread->space->condition->Broadcast(currentThread->space->lock);
+        currentThread->space->lock->Release();
+    }
+#endif
     Sleep();					// invokes SWITCH
     // not reached
 }
@@ -203,10 +205,16 @@ Thread::Yield ()
     
     DEBUG('t', "Yielding thread \"%s\"\n", getName());
     
-    scheduler->ReadyToRun(this);
+    // scheduler->ReadyToRun(this);
+    // nextThread = scheduler->FindNextToRun();
+    // if(nextThread == this) status = RUNNING;
+	// else scheduler->Run(nextThread);
+
     nextThread = scheduler->FindNextToRun();
-    if(nextThread == this) status = RUNNING;
-	else scheduler->Run(nextThread);
+    if(nextThread != NULL) {
+        scheduler->ReadyToRun(this);
+        scheduler->Run(nextThread);
+    }
 
     (void) interrupt->SetLevel(oldLevel);
 }
@@ -269,8 +277,8 @@ void Thread::Suspend (){
             machine->tlb[i].valid = FALSE;
         }
 #endif
-        char vmname[20];
-        sprintf(vmname, "VirtualMemory%d", tid);
+        char vmname[50];
+        sprintf(vmname, "VirtualMemory%d", space);
         OpenFile *vm = fileSystem->Open(vmname);
         for(int i=0;i<machine->pageTableSize;i++)
             if(machine->pageTable[i].valid){

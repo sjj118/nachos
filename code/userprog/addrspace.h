@@ -16,6 +16,9 @@
 #include "copyright.h"
 #include "filesys.h"
 
+class Condition;
+class Lock;
+
 #define UserStackSize		1024 	// increase this as necessary!
 
 class AddrSpace {
@@ -23,6 +26,7 @@ class AddrSpace {
     AddrSpace(OpenFile *executable);	// Create an address space,
 					// initializing it with the program
 					// stored in the file "executable"
+    AddrSpace(const AddrSpace* space);
     ~AddrSpace();			// De-allocate an address space
 
     void InitRegisters();		// Initialize user-level CPU registers,
@@ -36,6 +40,9 @@ class AddrSpace {
 					// for now!
     unsigned int numPages;		// Number of pages in the virtual 
 					// address space
+  public:
+    Lock *lock;
+    Condition *condition;
 };
 
 #endif // ADDRSPACE_H

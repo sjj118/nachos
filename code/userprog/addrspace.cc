@@ -19,6 +19,7 @@
 #include "system.h"
 #include "addrspace.h"
 #include "noff.h"
+#include "synch.h"
 #ifdef HOST_SPARC
 #include <strings.h>
 #endif
@@ -62,6 +63,8 @@ SwapHeader (NoffHeader *noffH)
 
 AddrSpace::AddrSpace(OpenFile *executable)
 {
+    condition = new Condition("addrspace condition");
+    lock = new Lock("addrspace lock");
     NoffHeader noffH;
     unsigned int i, size;
 
@@ -86,8 +89,8 @@ AddrSpace::AddrSpace(OpenFile *executable)
 
     DEBUG('a', "Initializing address space, num pages %d, size %d\n", numPages, size);
     
-    char vmname[20];
-    sprintf(vmname, "VirtualMemory%d", currentThread->getTid());
+    char vmname[50];
+    sprintf(vmname, "VirtualMemory%d", this);
     fileSystem->Create(vmname, size);
 
 // first, set up the translation 
@@ -125,6 +128,37 @@ AddrSpace::AddrSpace(OpenFile *executable)
     delete vm;
 }
 
+AddrSpace::AddrSpace(const AddrSpace* space){
+    condition = new Condition("addrspace condition");
+    lock = new Lock("addrspace lock");
+    numPages = space->numPages;
+    unsigned int size = numPages * PageSize, i;
+    pageTable = new TranslationEntry[numPages];
+    for (i = 0; i < numPages; i++) {
+        pageTable[i].virtualPage = i;
+        pageTable[i].valid = FALSE;
+        pageTable[i].use = FALSE;
+        pageTable[i].dirty = FALSE;
+        pageTable[i].readOnly = FALSE;
+    }
+    char *buffer = new char[size];
+    char vmname[50];
+    sprintf(vmname, "VirtualMemory%d", space);
+    OpenFile *vm = fileSystem->Open(vmname);
+    for (i = 0; i < numPages; i++) if(space->pageTable[i].valid && space->pageTable[i].dirty){
+        vm->WriteAt(machine->mainMemory + space->pageTable[i].physicalPage * PageSize, PageSize, i * PageSize);
+        space->pageTable[i].dirty = FALSE;
+    }
+    vm->ReadAt(buffer, size, 0);
+    delete vm;
+    sprintf(vmname, "VirtualMemory%d", this);
+    fileSystem->Create(vmname, size);
+    vm = fileSystem->Open(vmname);
+    vm->WriteAt(buffer, size, 0);
+    delete buffer;
+    delete vm;
+}
+
 //----------------------------------------------------------------------
 // AddrSpace::~AddrSpace
 // 	Dealloate an address space.  Nothing for now!
@@ -135,6 +169,11 @@ AddrSpace::~AddrSpace(){
         if(pageTable[i].valid)
             machine->bitmap->Clear(pageTable[i].physicalPage);
     delete pageTable;
+    char vmname[50];
+    sprintf(vmname, "VirtualMemory%d", this);
+    fileSystem->Remove(vmname);
+    // delete condition;
+    // delete lock;
 }
 
 //----------------------------------------------------------------------

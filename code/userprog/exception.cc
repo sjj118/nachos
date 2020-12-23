@@ -24,6 +24,7 @@
 #include "copyright.h"
 #include "system.h"
 #include "syscall.h"
+#include "synch.h"
 
 //----------------------------------------------------------------------
 // ExceptionHandler
@@ -57,8 +58,8 @@ void PageFaultHandler(){
 		DEBUG('a', "virtual page # %d too large for page table size %d!\n", vpn, machine->pageTableSize);
 		ASSERT(FALSE);
 	}
-    char vmname[20];
-    sprintf(vmname, "VirtualMemory%d", currentThread->getTid());
+    char vmname[50];
+    sprintf(vmname, "VirtualMemory%d", currentThread->space);
     OpenFile *vm = fileSystem->Open(vmname);
     if((ppn = machine->bitmap->Find()) == -1){      // physics memory full
 #ifdef USE_TLB
@@ -118,24 +119,104 @@ void TLBMissHandler(){
     *replaced = *entry;
 }
 
+void ExecThread(int arg){
+    currentThread->space->InitRegisters();
+    currentThread->space->RestoreState();
+    machine->Run();
+}
+
+void ForkThread(int func_addr){
+    currentThread->space->InitRegisters();
+    currentThread->space->RestoreState();
+    machine->WriteRegister(PCReg, func_addr);
+    machine->WriteRegister(NextPCReg, func_addr + 4);
+    machine->Run();
+}
+
 void
 ExceptionHandler(ExceptionType which)
 {
     int type = machine->ReadRegister(2);
 
     if (which == SyscallException) {
-        switch (type){
-        case SC_Halt:
+        if(type == SC_Halt){
             DEBUG('T', "Shutdown, initiated by user program.\n");
             interrupt->Halt();
-            break;
-        case SC_Exit:
+        } else if(type == SC_Exit){
             DEBUG('T', "Exit with code %d.\n", machine->ReadRegister(4));
             currentThread->Finish();
-            break;
-        default:
-            break;
+        } else if(type == SC_Exec){
+            int name_addr = machine->ReadRegister(4);       // 读取文件名
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            OpenFile *executable = fileSystem->Open(name);  // 创建地址空间
+            AddrSpace *space = new AddrSpace(executable);
+            delete executable;
+            Thread *t = newThread(name);                    // 新建线程
+            t->space = space;
+            t->Fork(ExecThread, 0);
+            machine->WriteRegister(2, (SpaceId) space);     // 设置返回值
+        } else if(type == SC_Join){
+            AddrSpace *space = (AddrSpace*)machine->ReadRegister(4);
+            space->lock->Acquire();
+            space->condition->Wait(space->lock);
+            space->lock->Release();
+        } else if(type == SC_Create){
+            int name_addr = machine->ReadRegister(4);
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            ASSERT(fileSystem->Create(name, 0));
+            delete[] name;
+        } else if(type == SC_Open){
+            int name_addr = machine->ReadRegister(4);
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            machine->WriteRegister(2, (OpenFileId) fileSystem->Open(name));
+            delete[] name;
+        } else if(type == SC_Read){
+            int buffer_addr = machine->ReadRegister(4);
+            int size = machine->ReadRegister(5);
+            OpenFile* openfile = (OpenFile*) machine->ReadRegister(6);
+            char *buffer = new char[size];
+            openfile->Read(buffer, size);
+            for(int n=0;n<size;n++){
+                while(!machine->WriteMem(buffer_addr + n, 1, buffer[n]));
+            }
+            delete[] buffer;
+        } else if(type == SC_Write){
+            int buffer_addr = machine->ReadRegister(4);
+            int size = machine->ReadRegister(5);
+            OpenFile* openfile = (OpenFile*) machine->ReadRegister(6);
+            char *buffer = new char[size + 4];
+            for(int n=0;n<size;n++){
+                while(!machine->ReadMem(buffer_addr + n, 1, (int*)(buffer + n)));
+            }
+            openfile->Write(buffer, size);
+            delete[] buffer;
+        } else if(type == SC_Close){
+            OpenFile* openfile = (OpenFile*) machine->ReadRegister(4);
+            delete openfile;
+        } else if(type == SC_Fork){
+            int func_addr = machine->ReadRegister(4);
+            AddrSpace *space = new AddrSpace(currentThread->space);
+            Thread *t = new Thread("forked thread");
+            t->space = space;
+            t->Fork(ForkThread, func_addr);
+        } else if(type == SC_Yield){
+            currentThread->Yield();
         }
+        int nextPC = machine->ReadRegister(NextPCReg);
+        machine->WriteRegister(PCReg, nextPC);
+        machine->WriteRegister(NextPCReg, nextPC + 4);
     } else if(which == PageFaultException){
         if(machine->tlb == NULL){
             DEBUG('a', "Page Fault.\n");

@@ -97,8 +97,8 @@ Machine::ReadMem(int addr, int size, int *value)
     
     exception = Translate(addr, &physicalAddress, size, FALSE);
     if (exception != NoException) {
-	machine->RaiseException(exception, addr);
-	return FALSE;
+		machine->RaiseException(exception, addr);
+		return FALSE;
     }
     switch (size) {
       case 1:

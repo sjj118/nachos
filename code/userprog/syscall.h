@@ -29,6 +29,12 @@
 #define SC_Close	8
 #define SC_Fork		9
 #define SC_Yield	10
+#define SC_Pwd      11
+#define SC_Ls       12
+#define SC_Cd       13
+#define SC_Mkdir    14
+#define SC_Rmdir    15
+#define SC_Remove   16
 
 #ifndef IN_ASM
 
@@ -123,6 +129,18 @@ void Fork(void (*func)());
  * or not. 
  */
 void Yield();		
+
+void Pwd();
+
+void Ls();
+
+void Cd(char *name);
+
+void Mkdir(char *name);
+
+void Rmdir(char *name);
+
+void Remove(char *name);
 
 #endif /* IN_ASM */
 

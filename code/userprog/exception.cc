@@ -21,6 +21,9 @@
 // All rights reserved.  See copyright.h for copyright notice and limitation 
 // of liability and disclaimer of warranty provisions.
 
+#include "stdlib.h"
+#include "unistd.h"
+#include <sys/stat.h>
 #include "copyright.h"
 #include "system.h"
 #include "syscall.h"
@@ -187,10 +190,12 @@ ExceptionHandler(ExceptionType which)
             int size = machine->ReadRegister(5);
             OpenFile* openfile = (OpenFile*) machine->ReadRegister(6);
             char *buffer = new char[size];
-            openfile->Read(buffer, size);
+            if((OpenFileId)openfile == ConsoleInput) for(int i=0;i<size;i++) buffer[i] = getchar();
+            else size = openfile->Read(buffer, size);
             for(int n=0;n<size;n++){
                 while(!machine->WriteMem(buffer_addr + n, 1, buffer[n]));
             }
+            machine->WriteRegister(2, size);
             delete[] buffer;
         } else if(type == SC_Write){
             int buffer_addr = machine->ReadRegister(4);
@@ -200,7 +205,8 @@ ExceptionHandler(ExceptionType which)
             for(int n=0;n<size;n++){
                 while(!machine->ReadMem(buffer_addr + n, 1, (int*)(buffer + n)));
             }
-            openfile->Write(buffer, size);
+            if((OpenFileId)openfile == ConsoleOutput) for(int i=0;i<size;i++) putchar(buffer[i]);
+            else openfile->Write(buffer, size);
             delete[] buffer;
         } else if(type == SC_Close){
             OpenFile* openfile = (OpenFile*) machine->ReadRegister(4);
@@ -213,6 +219,42 @@ ExceptionHandler(ExceptionType which)
             t->Fork(ForkThread, func_addr);
         } else if(type == SC_Yield){
             currentThread->Yield();
+        } else if(type == SC_Pwd){
+            system("pwd");
+        } else if(type == SC_Ls){
+            system("ls");
+        } else if(type == SC_Cd){
+            int name_addr = machine->ReadRegister(4);
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            chdir(name);
+        } else if(type == SC_Mkdir){
+            int name_addr = machine->ReadRegister(4);
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            mkdir(name, 0777);
+        } else if(type == SC_Rmdir){
+            int name_addr = machine->ReadRegister(4);
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            rmdir(name);
+        } else if(type == SC_Remove){
+            int name_addr = machine->ReadRegister(4);
+            char *name = new char[FileNameMaxLen + 4];
+            for(int n=0;;n++){
+                while(!machine->ReadMem(name_addr + n, 1, (int*)(name + n)));
+                if(name[n] == 0)break;
+            }
+            fileSystem->Remove(name);
         }
         int nextPC = machine->ReadRegister(NextPCReg);
         machine->WriteRegister(PCReg, nextPC);
